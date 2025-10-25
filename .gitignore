@@ -1,0 +1,33 @@
+# Environment files
+.env
+config.local.php
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+error_log
+
+# Temporary files
+tmp/
+temp/
+cache/
+
+# Composer
+vendor/
+composer.lock
+
+# Database backups
+*.sql.backup
+backup/
+
+# OS generated files
+Thumbs.db
+.DS_Store
