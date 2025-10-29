@@ -17,10 +17,16 @@ Before you begin, ensure you have the following installed:
 php -v
 ```
 
-### Check MySQL Installation
+### Check MySQL/MariaDB Installation
 
 ```bash
+# For MySQL
 mysql --version
+
+# For MariaDB
+mariadb --version
+# or
+mysql --version  # MariaDB also responds to mysql command
 ```
 
 ## Installation Steps
@@ -35,13 +41,16 @@ git clone https://github.com/yaulia-search/PHP-MySQL-Employee-Management-CRUD.gi
 cd PHP-MySQL-Employee-Management-CRUD
 ```
 
-### Step 2: Start MySQL Server
+### Step 2: Start MySQL/MariaDB Server
 
 **On macOS:**
 
 ```bash
-# If using Homebrew
+# If using Homebrew (MySQL)
 brew services start mysql
+
+# If using Homebrew (MariaDB)
+brew services start mariadb
 
 # Or manually
 mysql.server start
@@ -51,10 +60,37 @@ mysql.server start
 - Start MySQL from XAMPP/WAMP control panel
 - Or start from Services
 
-**On Linux:**
+**On Amazon Linux 2 / Amazon Linux 2023:**
 
 ```bash
+# Start MariaDB
+sudo systemctl start mariadb
+
+# Enable MariaDB to start on boot
+sudo systemctl enable mariadb
+
+# Check status
+sudo systemctl status mariadb
+```
+
+**On Ubuntu/Debian Linux:**
+
+```bash
+# For MySQL
 sudo systemctl start mysql
+
+# For MariaDB
+sudo systemctl start mariadb
+```
+
+**On CentOS/RHEL:**
+
+```bash
+# For MariaDB
+sudo systemctl start mariadb
+
+# For MySQL
+sudo systemctl start mysqld
 ```
 
 ### Step 3: Create Database
@@ -62,8 +98,11 @@ sudo systemctl start mysql
 **Option A: Using Command Line**
 
 ```bash
-# Login to MySQL
+# Login to MySQL/MariaDB
 mysql -u root -p
+
+# For MariaDB on Amazon Linux (if no password set initially)
+sudo mysql
 
 # Create database (copy and paste from schema.sql)
 source database/schema.sql
@@ -83,7 +122,14 @@ USE php_employee_management;
 **Option C: Quick Command**
 
 ```bash
+# Standard method
 mysql -u root -p < database/schema.sql
+
+# For MariaDB on Amazon Linux (if using sudo)
+sudo mysql < database/schema.sql
+
+# Or if you have a password
+mysql -u root -p php_employee_management < database/schema.sql
 ```
 
 ### Step 4: Configure Database Connection
@@ -93,8 +139,19 @@ The application uses `config.php` for database settings. Update if needed:
 ```php
 // config.php
 define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', '');  // Your MySQL password
+define('DB_USER', 'root');  // or your MariaDB user
+define('DB_PASS', '');  // Your MySQL/MariaDB password
+define('DB_NAME', 'php_employee_management');
+```
+
+**For Amazon Linux with MariaDB:**
+
+If you created a dedicated database user:
+
+```php
+define('DB_HOST', 'localhost');
+define('DB_USER', 'empuser');  // your database user
+define('DB_PASS', 'your_password');  // your database password
 define('DB_NAME', 'php_employee_management');
 ```
 
@@ -156,9 +213,29 @@ Visit: `http://localhost:8000/test-connection.php`
 ### Issue 1: "Connection failed" Error
 
 **Solution:**
-- Check if MySQL is running: `mysql.server status`
+
+**On macOS:**
+```bash
+# Check MySQL status
+mysql.server status
+
+# Or for Homebrew
+brew services list | grep mysql
+```
+
+**On Amazon Linux:**
+```bash
+# Check MariaDB status
+sudo systemctl status mariadb
+
+# Start if not running
+sudo systemctl start mariadb
+```
+
+**On any system:**
 - Verify database credentials in `config.php`
 - Ensure database exists: `SHOW DATABASES;`
+- Test connection: `mysql -u root -p` or `sudo mysql`
 
 ### Issue 2: "Table doesn't exist" Error
 
@@ -182,14 +259,31 @@ php -S localhost:8080
 chmod -R 755 /path/to/project
 ```
 
-### Issue 5: MySQL Access Denied
+### Issue 5: MySQL/MariaDB Access Denied
 
-**Solution:**
+**Solution for MySQL:**
 ```bash
 # Reset MySQL root password
 mysql -u root
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'your_new_password';
 FLUSH PRIVILEGES;
+```
+
+**Solution for MariaDB on Amazon Linux:**
+```bash
+# Access MariaDB as root
+sudo mysql
+
+# Set password for root user
+ALTER USER 'root'@'localhost' IDENTIFIED BY 'your_new_password';
+FLUSH PRIVILEGES;
+EXIT;
+
+# Or create a new user
+CREATE USER 'empuser'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON php_employee_management.* TO 'empuser'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
 ```
 
 ## Application Features
@@ -253,11 +347,17 @@ tail -f /var/log/apache2/error.log
 ### Database Backup
 
 ```bash
-# Backup database
+# Backup database (MySQL/MariaDB)
 mysqldump -u root -p php_employee_management > backup.sql
+
+# For MariaDB on Amazon Linux (with sudo)
+sudo mysqldump php_employee_management > backup.sql
 
 # Restore database
 mysql -u root -p php_employee_management < backup.sql
+
+# Or with sudo
+sudo mysql php_employee_management < backup.sql
 ```
 
 ## Next Steps: Preparing for EC2 Deployment
@@ -298,10 +398,87 @@ If you encounter any issues:
 4. Check database credentials
 5. Review this guide's troubleshooting section
 
+## Amazon Linux Specific Setup
+
+### Install LAMP Stack on Amazon Linux 2023
+
+```bash
+# Update system
+sudo dnf update -y
+
+# Install Apache
+sudo dnf install httpd -y
+sudo systemctl start httpd
+sudo systemctl enable httpd
+
+# Install PHP 8.x
+sudo dnf install php php-cli php-mysqlnd php-json php-mbstring -y
+
+# Install MariaDB
+sudo dnf install mariadb105-server -y
+sudo systemctl start mariadb
+sudo systemctl enable mariadb
+
+# Secure MariaDB installation
+sudo mysql_secure_installation
+
+# Verify installations
+php -v
+mysql --version
+```
+
+### Install LAMP Stack on Amazon Linux 2
+
+```bash
+# Update system
+sudo yum update -y
+
+# Install Apache
+sudo yum install httpd -y
+sudo systemctl start httpd
+sudo systemctl enable httpd
+
+# Install PHP 7.4+
+sudo amazon-linux-extras install php7.4 -y
+
+# Install MariaDB
+sudo yum install mariadb-server -y
+sudo systemctl start mariadb
+sudo systemctl enable mariadb
+
+# Secure MariaDB installation
+sudo mysql_secure_installation
+```
+
+### Deploy Application on Amazon Linux
+
+```bash
+# Navigate to web root
+cd /var/www/html
+
+# Clone repository
+sudo git clone https://github.com/yaulia-search/PHP-MySQL-Employee-Management-CRUD.git .
+
+# Set permissions
+sudo chown -R apache:apache /var/www/html
+sudo chmod -R 755 /var/www/html
+
+# Import database
+sudo mysql < database/schema.sql
+
+# Configure database credentials in config.php
+sudo nano config.php
+
+# Restart Apache
+sudo systemctl restart httpd
+```
+
 ## Resources
 
 - [PHP Documentation](https://www.php.net/docs.php)
 - [MySQL Documentation](https://dev.mysql.com/doc/)
+- [MariaDB Documentation](https://mariadb.org/documentation/)
+- [Amazon Linux Documentation](https://docs.aws.amazon.com/linux/)
 - [Bootstrap Documentation](https://getbootstrap.com/docs/)
 
 ---
