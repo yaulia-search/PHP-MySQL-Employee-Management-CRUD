@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# Deploy Employee Management System to AWS Lightsail
+# Deploy Employee Management System to AWS Lightsail (Amazon Linux 2023)
 # Instance IP: 52.91.83.238
 
 INSTANCE_IP="52.91.83.238"
 SSH_KEY="./LightsailDefaultKey-us-east-1.pem"
-APP_DIR="/opt/bitnami/apache/htdocs"
+APP_DIR="/var/www/html"
 
-echo "🚀 Deploying Employee Management System to Lightsail..."
+echo "🚀 Deploying Employee Management System to Lightsail (Amazon Linux 2023)..."
 
 # Test SSH connection
 echo "📡 Testing SSH connection..."
-ssh -i $SSH_KEY -o ConnectTimeout=10 bitnami@$INSTANCE_IP "echo 'SSH connection successful!'"
+ssh -i $SSH_KEY -o ConnectTimeout=10 ec2-user@$INSTANCE_IP "echo 'SSH connection successful!'"
 
 if [ $? -ne 0 ]; then
     echo "❌ SSH connection failed. Please check:"
@@ -23,81 +23,83 @@ fi
 
 # Upload application files
 echo "📁 Uploading application files..."
-scp -i $SSH_KEY -r *.php database/ bitnami@$INSTANCE_IP:/tmp/
+scp -i $SSH_KEY -r *.php database/ ec2-user@$INSTANCE_IP:/tmp/
 
 # Configure the server
 echo "⚙️ Configuring server..."
-ssh -i $SSH_KEY bitnami@$INSTANCE_IP << 'EOF'
-# Stop Apache (we'll use Nginx)
-sudo systemctl stop apache2
-sudo systemctl disable apache2
+ssh -i $SSH_KEY ec2-user@$INSTANCE_IP << 'EOF'
+# Update system
+sudo dnf update -y
 
-# Install and configure Nginx
-sudo apt update
-sudo apt install -y nginx
+# Install Apache, PHP, MySQL
+sudo dnf install -y httpd php php-mysqli php-json php-mbstring mariadb105-server
+
+# Start and enable services
+sudo systemctl start httpd mariadb
+sudo systemctl enable httpd mariadb
+
+# Secure MySQL installation
+sudo mysql_secure_installation
+
+# Create database and user
+sudo mysql -e "CREATE DATABASE IF NOT EXISTS php_employee_management;"
+sudo mysql -e "CREATE USER IF NOT EXISTS 'empuser'@'localhost' IDENTIFIED BY 'SecurePass123!';"
+sudo mysql -e "GRANT ALL PRIVILEGES ON php_employee_management.* TO 'empuser'@'localhost';"
+sudo mysql -e "FLUSH PRIVILEGES;"
+
+# Import database schema
+sudo mysql php_employee_management < /tmp/database/schema.sql
 
 # Copy application files
-sudo cp -r /tmp/*.php /opt/bitnami/apache/htdocs/
-sudo cp -r /tmp/database /opt/bitnami/apache/htdocs/
-sudo chown -R bitnami:daemon /opt/bitnami/apache/htdocs/
-sudo chmod -R 755 /opt/bitnami/apache/htdocs/
-
-# Configure Nginx
-sudo tee /etc/nginx/sites-available/employee-management > /dev/null << 'NGINX_CONF'
-server {
-    listen 80;
-    server_name _;
-    root /opt/bitnami/apache/htdocs;
-    index index.php index.html index.htm;
-
-    location / {
-        try_files $uri $uri/ =404;
-    }
-
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/opt/bitnami/php/var/run/www.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~ /\.ht {
-        deny all;
-    }
-}
-NGINX_CONF
-
-# Enable site
-sudo ln -sf /etc/nginx/sites-available/employee-management /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-
-# Start Nginx
-sudo systemctl start nginx
-sudo systemctl enable nginx
-
-# Setup database
-mysql -u root << 'SQL_SETUP'
-CREATE DATABASE IF NOT EXISTS php_employee_management;
-USE php_employee_management;
-SOURCE /opt/bitnami/apache/htdocs/database/schema.sql;
-SQL_SETUP
+sudo cp /tmp/*.php /var/www/html/
+sudo cp -r /tmp/database /var/www/html/
+sudo chown -R apache:apache /var/www/html/
+sudo chmod -R 755 /var/www/html/
 
 # Update config for production
-sudo cp /opt/bitnami/apache/htdocs/config-production.php /opt/bitnami/apache/htdocs/config.php
+sudo cp /var/www/html/config-production.php /var/www/html/config.php
+
+# Update database credentials in config.php
+sudo sed -i "s/define('DB_USER', 'root');/define('DB_USER', 'empuser');/" /var/www/html/config.php
+sudo sed -i "s/define('DB_PASS', '');/define('DB_PASS', 'SecurePass123!');/" /var/www/html/config.php
+
+# Configure Apache
+sudo tee /etc/httpd/conf.d/employee-management.conf > /dev/null << 'APACHE_CONF'
+<VirtualHost *:80>
+    DocumentRoot /var/www/html
+    DirectoryIndex index.php index.html
+    
+    <Directory /var/www/html>
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php-fpm/www.sock|fcgi://localhost"
+    </FilesMatch>
+</VirtualHost>
+APACHE_CONF
+
+# Start PHP-FPM
+sudo systemctl start php-fpm
+sudo systemctl enable php-fpm
+
+# Restart Apache
+sudo systemctl restart httpd
 
 echo "✅ Deployment completed!"
-echo "🌐 Your application is available at: http://$INSTANCE_IP"
+echo "🌐 Your application is available at: http://52.91.83.238"
 EOF
 
 echo ""
 echo "🎉 Deployment completed successfully!"
 echo ""
 echo "📋 Next steps:"
-echo "   1. Visit: http://$INSTANCE_IP"
-echo "   2. Test database: http://$INSTANCE_IP/test-connection.php"
+echo "   1. Visit: http://52.91.83.238"
+echo "   2. Test database: http://52.91.83.238/test-connection.php"
 echo "   3. Remove test file after verification"
 echo ""
 echo "🔧 SSH access:"
-echo "   ssh -i $SSH_KEY bitnami@$INSTANCE_IP"
+echo "   ssh -i $SSH_KEY ec2-user@52.91.83.238"
 echo ""
 echo "💰 Monthly cost: ~$7 (Micro instance)"

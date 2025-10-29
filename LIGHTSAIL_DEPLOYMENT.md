@@ -1,234 +1,91 @@
-# AWS Lightsail Deployment Guide - Employee Management System
+# AWS Lightsail Deployment Guide - Amazon Linux 2023
 
-## Overview
-This guide will help you deploy the PHP Employee Management System on AWS Lightsail with Nginx web server.
+## Quick Start
 
-## Prerequisites
-- AWS Account with Lightsail access
-- SSH client (Terminal on macOS/Linux, PuTTY on Windows)
+Your Lightsail instance is ready:
+- **Instance:** employee-management-app  
+- **IP:** 52.91.83.238
+- **OS:** Amazon Linux 2023
+- **Web Server:** Apache
+- **Cost:** $7/month
 
-## Step 1: Instance Setup
+## Deploy in 3 Steps
 
-Your Lightsail instance has been created with:
-- **Instance Name:** employee-management-app
-- **Bundle:** Micro ($7/month) - 1GB RAM, 40GB SSD
-- **Blueprint:** LAMP (PHP 8) - Pre-configured with Apache, MySQL, PHP
-- **Region:** us-east-1a
-
-## Step 2: Connect to Your Instance
-
-1. Get your instance's public IP:
+### 1. Run Deployment Script
 ```bash
-aws lightsail get-instances --region us-east-1 --query 'instances[?name==`employee-management-app`].publicIpAddress' --output text
+./deploy-to-lightsail.sh
 ```
 
-2. Download the SSH key:
+### 2. Access Application
+- **URL:** http://52.91.83.238
+- **Test:** http://52.91.83.238/test-connection.php
+
+### 3. SSH Access (if needed)
 ```bash
-aws lightsail download-default-key-pair --region us-east-1
+ssh -i LightsailDefaultKey-us-east-1.pem ec2-user@52.91.83.238
 ```
 
-3. Connect via SSH:
-```bash
-chmod 400 LightsailDefaultKey-us-east-1.pem
-ssh -i LightsailDefaultKey-us-east-1.pem bitnami@YOUR_INSTANCE_IP
-```
+## What the Script Does
 
-## Step 3: Switch from Apache to Nginx
+1. Updates Amazon Linux 2023
+2. Installs Apache, PHP 8, MariaDB
+3. Uploads your PHP files to `/var/www/html/`
+4. Creates database and imports sample data
+5. Configures Apache virtual host
+6. Sets proper file permissions
 
-Since the LAMP blueprint comes with Apache, we'll switch to Nginx:
+## Manual Installation (Alternative)
 
-```bash
-# Stop and disable Apache
-sudo systemctl stop apache2
-sudo systemctl disable apache2
-
-# Install Nginx
-sudo apt update
-sudo apt install -y nginx
-
-# Start and enable Nginx
-sudo systemctl start nginx
-sudo systemctl enable nginx
-```
-
-## Step 4: Configure Nginx
-
-Create Nginx configuration:
+If you prefer manual setup:
 
 ```bash
-sudo tee /etc/nginx/sites-available/employee-management > /dev/null <<EOF
-server {
-    listen 80;
-    server_name _;
-    root /opt/bitnami/apache/htdocs;
-    index index.php index.html index.htm;
+# Connect to instance
+ssh -i LightsailDefaultKey-us-east-1.pem ec2-user@52.91.83.238
 
-    location / {
-        try_files \$uri \$uri/ =404;
-    }
+# Install LAMP stack
+sudo dnf update -y
+sudo dnf install -y httpd php php-mysqli php-json php-mbstring mariadb105-server
 
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/opt/bitnami/php/var/run/www.sock;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        include fastcgi_params;
-    }
+# Start services
+sudo systemctl start httpd mariadb
+sudo systemctl enable httpd mariadb
 
-    location ~ /\.ht {
-        deny all;
-    }
-}
-EOF
-
-# Enable site and remove default
-sudo ln -sf /etc/nginx/sites-available/employee-management /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-
-# Test and reload Nginx
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-## Step 5: Upload Application Files
-
-1. **Using SCP (from your local machine):**
-```bash
-scp -i LightsailDefaultKey-us-east-1.pem -r /Users/admin/ysa-edu.website/PHP-MySQL-Employee-Management-CRUD/* bitnami@YOUR_INSTANCE_IP:/tmp/
-```
-
-2. **Move files to web directory:**
-```bash
-sudo cp -r /tmp/* /opt/bitnami/apache/htdocs/
-sudo chown -R bitnami:daemon /opt/bitnami/apache/htdocs/
-sudo chmod -R 755 /opt/bitnami/apache/htdocs/
-```
-
-## Step 6: Configure Database
-
-1. **Access MySQL:**
-```bash
-mysql -u root -p
-```
-
-2. **Create database and import schema:**
-```sql
-CREATE DATABASE IF NOT EXISTS php_employee_management;
-USE php_employee_management;
-SOURCE /opt/bitnami/apache/htdocs/database/schema.sql;
-EXIT;
-```
-
-## Step 7: Update Configuration
-
-1. **Copy production config:**
-```bash
-sudo cp /opt/bitnami/apache/htdocs/config-production.php /opt/bitnami/apache/htdocs/config.php
-```
-
-2. **Update database credentials in config.php:**
-```php
-define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', 'YOUR_MYSQL_ROOT_PASSWORD');
-define('DB_NAME', 'php_employee_management');
-```
-
-## Step 8: Configure Firewall
-
-Open HTTP port in Lightsail:
-
-```bash
-aws lightsail put-instance-public-ports --region us-east-1 --instance-name employee-management-app --port-infos fromPort=80,toPort=80,protocol=TCP,cidrs=0.0.0.0/0
-```
-
-## Step 9: Test Application
-
-1. **Visit your application:**
-   - Open browser: `http://YOUR_INSTANCE_IP`
-   - Test database connection: `http://YOUR_INSTANCE_IP/test-connection.php`
-
-2. **Check logs if issues:**
-```bash
-sudo tail -f /var/log/nginx/error.log
-sudo tail -f /opt/bitnami/php/var/log/php-fpm.log
-```
-
-## Step 10: Security Hardening
-
-1. **Remove test files:**
-```bash
-sudo rm /opt/bitnami/apache/htdocs/test-connection.php
-```
-
-2. **Update PHP settings:**
-```bash
-sudo nano /opt/bitnami/php/etc/php.ini
-# Set: display_errors = Off
-# Set: expose_php = Off
-```
-
-3. **Restart services:**
-```bash
-sudo systemctl restart nginx
-sudo /opt/bitnami/ctlscript.sh restart php-fpm
-```
-
-## Optional: SSL Certificate
-
-Install Let's Encrypt SSL:
-
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
-```
-
-## Monitoring and Maintenance
-
-1. **Check service status:**
-```bash
-sudo systemctl status nginx mysql
-sudo /opt/bitnami/ctlscript.sh status
-```
-
-2. **View application logs:**
-```bash
-sudo tail -f /var/log/nginx/access.log
-sudo tail -f /var/log/nginx/error.log
-```
-
-3. **Backup database:**
-```bash
-mysqldump -u root -p php_employee_management > backup_$(date +%Y%m%d).sql
+# Upload files (from local machine)
+scp -i LightsailDefaultKey-us-east-1.pem -r *.php database/ ec2-user@52.91.83.238:/tmp/
 ```
 
 ## Troubleshooting
 
-### Common Issues:
+**Apache not starting:**
+```bash
+sudo systemctl status httpd
+sudo systemctl restart httpd
+```
 
-1. **502 Bad Gateway:**
-   - Check PHP-FPM: `sudo /opt/bitnami/ctlscript.sh status php-fpm`
-   - Restart: `sudo /opt/bitnami/ctlscript.sh restart php-fpm`
+**Database connection failed:**
+```bash
+sudo mysql -u root -p
+CREATE DATABASE php_employee_management;
+```
 
-2. **Database Connection Failed:**
-   - Verify MySQL: `sudo systemctl status mysql`
-   - Check credentials in config.php
+**Permission denied:**
+```bash
+sudo chown -R apache:apache /var/www/html/
+sudo chmod -R 755 /var/www/html/
+```
 
-3. **Permission Denied:**
-   - Fix permissions: `sudo chown -R bitnami:daemon /opt/bitnami/apache/htdocs/`
+## Security
 
-## Cost Optimization
+After deployment:
+```bash
+sudo rm /var/www/html/test-connection.php
+```
 
-- **Micro instance:** $7/month (1GB RAM, 40GB SSD)
-- **Data transfer:** 2TB included
-- **Static IP:** $3.50/month (optional)
-- **Snapshots:** $0.05/GB/month
+## File Locations
 
-## Next Steps
+- **Web files:** `/var/www/html/`
+- **Apache config:** `/etc/httpd/conf.d/`
+- **PHP config:** `/etc/php.ini`
+- **Logs:** `/var/log/httpd/`
 
-1. Configure domain name
-2. Set up SSL certificate
-3. Implement backup strategy
-4. Monitor performance
-5. Scale if needed
-
-Your Employee Management System is now running on AWS Lightsail with Nginx!
+That's it! Your Employee Management System is live on AWS Lightsail with Apache.
